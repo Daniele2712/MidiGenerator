@@ -1,80 +1,75 @@
-# Piano Video → MIDI
+# Piano Video → MIDI 2.2
 
-Applicazione desktop Python per convertire video con note a caduta (stile Synthesia) in file MIDI.
+Applicazione Python con GUI CustomTkinter per convertire video di pianoforti digitali con note a caduta in file MIDI.
 
-## 1. Installazione
+## Novità della versione 2.2
 
-Consigliato: Python 3.11 o 3.12.
+- **Calibrazione automatica** dei parametri geometrici del video.
+- Rilevamento automatico della linea della tastiera tramite la linea rossa di separazione.
+- Rilevamento automatico della geometria della tastiera tramite il pattern dei tasti neri.
+- Stima automatica di `Centro C4 X` e `Larghezza ottava (px)`.
+- Indicazione della confidenza della calibrazione.
+- Linee di calibrazione sovrapposte all'anteprima per verificare visivamente i risultati.
+- Pulsante per ripetere manualmente la calibrazione automatica.
+- Restano disponibili i parametri manuali per eventuali correzioni.
+- Assi X/Y attorno all'anteprima con coordinate in pixel del video originale.
+- Supporto `.mov`, `.mp4`, `.mkv`, `.avi`.
 
-```bash
-python -m venv .venv
+## Come funziona la calibrazione automatica
+
+Quando carichi un video, il programma analizza diversi fotogrammi e cerca:
+
+1. la linea rossa sopra la tastiera;
+2. i tasti neri nella zona della tastiera;
+3. il pattern ripetitivo dei tasti neri (`C# D# F# G# A#`);
+4. la distanza tra i tasti per stimare un'ottava;
+5. la posizione del C4 rispetto alla tastiera visibile.
+
+Per il video di esempio utilizzato nello sviluppo, la calibrazione rileva automaticamente valori nell'ordine di:
+
+```text
+Limite note / tastiera Y ≈ 720 px
+C4 X                  ≈ 950.5 px
+Larghezza ottava      ≈ 462 px
 ```
 
-Windows:
-```bash
-.venv\\Scripts\\activate
-```
+Questi numeri sono solo un esempio: **non vengono più hardcodati**, perché vengono ricalcolati per ogni video.
 
-macOS/Linux:
+> Il BPM non viene ricavato dalla geometria della tastiera. Rimane un parametro musicale separato; può essere impostato manualmente.
+
+## Installazione
+
 ```bash
+python3 -m venv .venv
 source .venv/bin/activate
-```
-
-Poi:
-
-```bash
-python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-## 2. Avvio
+## Avvio
 
 ```bash
 python main.py
 ```
 
-## 3. Uso
+Su macOS puoi usare anche:
 
-1. Seleziona il video `.mov`, `.mp4`, `.mkv` o `.avi`.
-2. L'anteprima video appare nella scheda **Video & Conversione**.
-3. Controlla i parametri:
-   - BPM: `102` per il video di esempio.
-   - Linea tastiera Y: `628`.
-   - Centro C4 X: `830`.
-   - Larghezza ottava: `400` px.
-4. Scegli il file `.mid` di output.
-5. Premi **CONVERTI IN MIDI**.
-6. La barra di avanzamento mostra l'analisi.
-7. Nella scheda **Anteprima MIDI** puoi visualizzare le note riconosciute.
+```bash
+chmod +x avvia_macos.command
+./avvia_macos.command
+```
 
-## 4. Parametri del video di esempio
+Su Windows è disponibile `run_windows.bat`.
 
-I valori predefiniti sono calibrati sul video fornito nella conversazione:
+## Uso
 
-- risoluzione: 1920×1080
-- piano-roll: circa Y=90..628
-- linea di esecuzione/tastiera: Y≈628
-- C4: X≈830
-- un'ottava: ≈400 px
-- BPM visualizzato: 102
+1. Avvia la GUI.
+2. Seleziona il video.
+3. La calibrazione automatica parte subito.
+4. Controlla le linee colorate sull'anteprima e i valori nei campi.
+5. Se necessario, premi **CALIBRA PARAMETRI AUTOMATICAMENTE** per ripetere l'analisi.
+6. Puoi correggere manualmente i valori usando gli assi X/Y.
+7. Scegli il file MIDI di output e premi **CONVERTI IN MIDI**.
 
-Se usi un altro video con una grafica diversa, questi valori potrebbero dover essere modificati.
+## Nota tecnica
 
-## 5. Funzionamento
-
-Il programma:
-
-1. legge il video frame per frame con OpenCV;
-2. cerca le barre blu/verdi nel piano-roll;
-3. individua quando la barra raggiunge la linea della tastiera;
-4. usa la coordinata X per ricavare il pitch MIDI;
-5. usa la permanenza della barra sulla linea per ricavare la durata;
-6. opzionalmente rimuove il silenzio iniziale;
-7. opzionalmente quantizza gli eventi;
-8. scrive un file MIDI General MIDI con un suono di pianoforte.
-
-## 6. Limiti attuali
-
-Questa versione è calibrata sullo stile del video di esempio. Video con colori, prospettiva, posizione della tastiera o piano-roll differenti possono richiedere una nuova calibrazione.
-
-La durata viene ricavata dalla grafica e non dall'audio.
+La calibrazione automatica è pensata per video con una tastiera orizzontale e un piano-roll simile a quello del video di esempio. Se un video ha una grafica completamente diversa, la GUI mantiene comunque la possibilità di inserire manualmente i parametri.
