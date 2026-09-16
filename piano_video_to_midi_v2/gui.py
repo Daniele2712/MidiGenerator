@@ -392,7 +392,7 @@ class MidiPreview(ctk.CTkFrame):
 
     def set_events(self, events: list[NoteEvent]):
         self.events = events  # Aggiorna gli eventi visualizzati.
-        self.info.configure(text=f"Note rilevate: {len(events)} • X=pitch • Y=tempo")  # Mostra un riepilogo degli assi.
+        self.info.configure(text=f"Note rilevate: {len(events)} • X=pitch • Y=tempo (0 in fondo)")  # Mostra un riepilogo degli assi.
         self.draw()  # Ridisegna immediatamente il grafico.
 
     def draw(self):
@@ -410,6 +410,7 @@ class MidiPreview(ctk.CTkFrame):
         plot_h = max(500, self.top_margin + max_time * self.pixels_per_second + self.bottom_margin)  # Calcola l'altezza in base al tempo.
         x0 = self.left_margin  # Definisce l'inizio dell'area delle note sull'asse X.
         y0 = self.top_margin  # Definisce l'inizio dell'area delle note sull'asse Y.
+        baseline = plot_h - self.bottom_margin  # Posiziona il tempo zero in fondo al grafico.
 
         self.canvas.create_text(x0, 8, anchor="w", text="Pitch / note", fill="#dddddd", font=("Arial", 10, "bold"))  # Scrive il titolo dell'asse X.
         self.canvas.create_text(8, y0, anchor="w", text="Tempo", fill="#dddddd", font=("Arial", 10, "bold"))  # Scrive il titolo dell'asse Y.
@@ -424,7 +425,7 @@ class MidiPreview(ctk.CTkFrame):
         sec = 0.0  # Inizializza il tempo della griglia.
         step = 1.0 if max_time <= 60 else 5.0  # Sceglie un intervallo leggibile per la griglia temporale.
         while sec <= max_time:  # Disegna le righe temporali lungo tutto il brano.
-            y = y0 + sec * self.pixels_per_second  # Converte i secondi in coordinate verticali.
+            y = baseline - sec * self.pixels_per_second  # Converte il tempo in coordinate verticali dal basso verso l'alto.
             self.canvas.create_line(x0, y, plot_w - 15, y, fill="#292929")  # Disegna una linea orizzontale del tempo.
             self.canvas.create_text(5, y, anchor="w", text=f"{sec:g}s", fill="#aaaaaa", font=("Arial", 8))  # Scrive il tempo sulla sinistra.
             sec += step  # Passa al successivo riferimento temporale.
@@ -432,10 +433,10 @@ class MidiPreview(ctk.CTkFrame):
         for event in self.events:  # Disegna ogni evento MIDI individualmente.
             x1 = x0 + (event.pitch - min_pitch) * self.pitch_width + 1  # Calcola il bordo sinistro della nota.
             x2 = x1 + self.pitch_width - 2  # Calcola il bordo destro della nota.
-            y1 = y0 + event.start * self.pixels_per_second  # Calcola l'inizio verticale della nota.
-            y2 = y0 + event.end * self.pixels_per_second  # Calcola la fine verticale della nota.
+            y1 = baseline - event.end * self.pixels_per_second  # Calcola il bordo superiore della nota.
+            y2 = baseline - event.start * self.pixels_per_second  # Calcola il bordo inferiore della nota.
             fill = "#2f80ed" if event.hand == "left" else "#35c759" if event.hand == "right" else "#4da3ff"  # Sceglie il colore in base alla mano.
-            self.canvas.create_rectangle(x1, y1, x2, max(y1 + 3, y2), fill=fill, outline="")  # Disegna la nota mantenendo la durata.
+            self.canvas.create_rectangle(x1, min(y1, y2), x2, max(y1, y2, min(y1, y2) + 3), fill=fill, outline="")  # Disegna la nota mantenendo la durata.
 
         self.canvas.configure(scrollregion=(0, 0, plot_w, plot_h))  # Rende scorribile l'intero piano temporale.
 
