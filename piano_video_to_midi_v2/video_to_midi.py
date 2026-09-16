@@ -144,12 +144,11 @@ def _make_color_masks(frame: np.ndarray, config: DetectorConfig, color_centers: 
     left_hue, right_hue = color_centers  # Estrae i due colori assegnati alle mani.
     left = _hue_mask(hsv, left_hue, config.hue_tolerance, config.min_color_saturation)  # Maschera della mano sinistra.
     right = _hue_mask(hsv, right_hue, config.hue_tolerance, config.min_color_saturation)  # Maschera della mano destra.
-    kernel = np.ones((3, 3), np.uint8)  # Crea un piccolo elemento morfologico.
     masks: dict[str, np.ndarray] = {}  # Prepara il dizionario delle maschere.
-    for hand, raw in (("left", left), ("right", right)):  # Applica lo stesso trattamento alle due mani.
-        mask = raw.astype(np.uint8) * 255  # Converte la maschera booleana in immagine binaria.
-        masks[hand] = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)  # Chiude piccoli buchi e interruzioni.
-    return masks  # Restituisce le maschere finali.
+    for hand, raw in (("left", left), ("right", right)):  # Elabora separatamente i due colori.
+        # Non applicare MORPH_CLOSE: potrebbe chiudere i vuoti tra due note consecutive.
+        masks[hand] = (raw.astype(np.uint8) * 255)  # Converte la maschera booleana in immagine binaria senza unire le note.
+    return masks  # Restituisce le maschere finali mantenendo le separazioni verticali.
 
 
 # Backward-compatible helper for callers that only need a combined mask.
@@ -165,9 +164,9 @@ def detect_notes(
 ) -> tuple[list[NoteEvent], float]:
     """Detect coloured notes and estimate their real visual duration.
 
-    Blue notes are assigned to the left hand and green notes to the right
-    hand. Tracking is independent for each (pitch, hand) pair, so the hand
-    separation is retained in the resulting MIDI channels.
+    Notes are assigned to left/right hands using the two detected or manual
+    color profiles. Tracking is independent for each (pitch, hand) pair, and
+    neighbouring events are never merged automatically.
     """
     config = config or DetectorConfig()
     cap = cv2.VideoCapture(str(video_path))
@@ -229,19 +228,9 @@ def detect_notes(
                 if pitch is not None:
                     present.add((pitch, hand))
 
-            # For notes already active, use a narrow band immediately above
-            # the keyboard as a low-cost continuation test. This prevents a
-            # note-off from being detected too early when its visible bar
-            # becomes small near the end of its travel.
-            band_start = max(0, mask.shape[0] - 40)
-            for pitch, active_hand in keys:
-                if active_hand != hand or not active[(pitch, active_hand)] or (pitch, hand) in present:
-                    continue
-                expected_x = int(round(config.c4_center_x + (pitch - 60) * config.octave_width_px / 12.0))
-                x1 = max(0, expected_x - 16)
-                x2 = min(mask.shape[1], expected_x + 17)
-                if x1 < x2 and np.any(mask[band_start:, x1:x2] > 0):
-                    present.add((pitch, hand))
+            # Non utilizziamo più una fascia di continuità: una nota resta attiva
+            # soltanto se una barra valida viene rilevata nel fotogramma corrente.
+            # In questo modo uno spazio reale tra due barre genera un rilascio.
 
         for key in keys:
             pitch, hand = key
@@ -285,7 +274,7 @@ def detect_notes(
     return events, fps
 
 def _merge_short_gaps(events: list[NoteEvent], max_gap_frames: int, fps: float) -> list[NoteEvent]:
-    """Merge fragments of the same pitch and hand separated by a short gap."""
+    """Legacy helper retained for compatibility; it is not used by detection."""
     if not events:
         return []
     gap_limit = max(0, max_gap_frames) / max(fps, 1.0)

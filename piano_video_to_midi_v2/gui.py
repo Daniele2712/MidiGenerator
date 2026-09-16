@@ -444,7 +444,7 @@ class App(ctk.CTk):
         self.subdivision = tk.StringVar(value="16")
         self.quantize_strength = tk.StringVar(value="0.75")
         self.velocity = tk.StringVar(value="100")
-        self.release_tolerance = tk.StringVar(value="2")
+        self.release_tolerance = tk.StringVar(value="0")
         self.min_note_duration = tk.StringVar(value="0.035")
         self.auto_detect_colors = tk.BooleanVar(value=True)
         self.left_hue = tk.StringVar(value="")

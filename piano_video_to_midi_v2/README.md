@@ -114,3 +114,7 @@ di rilascio.
 Il rilevatore non è più vincolato a blu e verde: campiona vari fotogrammi, individua due tonalità HSV dominanti e assegna automaticamente la tonalità con posizione media più a sinistra alla mano sinistra e l'altra alla mano destra.
 
 È possibile disattivare il rilevamento automatico e inserire manualmente i valori Hue OpenCV (0-179) nella GUI. Le istruzioni principali del codice contengono commenti brevi per chiarire il ruolo delle operazioni.
+
+
+### Correzione separazione note
+La rilevazione usa ora attacco, continuità e rilascio espliciti: la fascia di continuità vicino alla tastiera è stata rimossa per evitare di fondere barre separate. La tolleranza predefinita è 0 frame; può essere aumentata manualmente se il video presenta piccoli buchi di rilevamento.
