@@ -76,7 +76,8 @@ class App(tk.Tk):
             lines, shape = build_image(Path(self.video.get()), Path(self.output.get()), self.line_min.get(), self.line_max.get(), line_threshold=self.threshold.get())
             self.after(0, lambda: self._done(f"Linee rilevate: {len(lines)}\nImmagine: {shape[1]}x{shape[0]}\nSalvata in: {self.output.get()}"))
         except Exception as exc:
-            self.after(0, lambda: self._error(str(exc)))
+            error_message = str(exc)
+            self.after(0, lambda message=error_message: self._error(message))
 
     def _done(self, message):
         """Gestisce il completamento con successo."""

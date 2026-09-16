@@ -16,8 +16,10 @@ def detect_horizontal_lines(frame, min_y, max_y, threshold=180):
                             minLineLength=max(80, frame.shape[1] // 5), maxLineGap=12)
     ys = []
     if lines is not None:
-        for line in lines[:, 0]:
-            x1, y1, x2, y2 = map(int, line)
+        # Normalizza l'output di Hough in una sequenza di segmenti, evitando
+        # di trattare accidentalmente un singolo numpy.int32 come iterabile.
+        for raw_line in np.asarray(lines).reshape(-1, 4):
+            x1, y1, x2, y2 = (int(value) for value in raw_line)
             if abs(y2 - y1) <= 3:
                 ys.append(min_y + (y1 + y2) // 2)
     ys.sort()
@@ -76,6 +78,9 @@ def build_image(video_path, output_path, line_min_ratio=0.15, line_max_ratio=0.9
         raise RuntimeError("Non sono state rilevate abbastanza linee orizzontali. Regola i parametri.")
 
     # Mantiene solo intervalli ragionevoli e ordina le linee.
+    # Converte esplicitamente le coordinate in interi Python per evitare
+    # problemi di iterabilità con scalari NumPy.
+    lines = sorted({int(value) for value in lines})
     strips = []
     for a, b in zip(lines, lines[1:]):
         if 8 <= b - a <= int(h * 0.25):
