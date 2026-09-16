@@ -1,8 +1,8 @@
-# Piano Video → MIDI 2.3
+# Midi Generator v2.3.1
 
 Applicazione Python con GUI CustomTkinter per convertire video di pianoforti digitali con note a caduta in file MIDI.
 
-## Novità della versione 2.3
+## Novità della versione 2.3.1
 
 - **Calibrazione automatica** dei parametri geometrici del video.
 - Rilevamento automatico della linea della tastiera tramite la linea rossa di separazione.
@@ -92,3 +92,10 @@ La durata viene stimata osservando per quanti frame una nota resta presente nell
 - gli intervalli frammentati dello stesso pitch vengono uniti quando la pausa è molto breve.
 
 I parametri disponibili nella GUI sono `Tolleranza rilascio (frame)` e `Durata minima (s)`. La durata viene salvata nel MIDI attraverso la distanza tra gli eventi `note_on` e `note_off`.
+
+
+### v2.3.1
+- Nome applicazione: **Midi Generator v2.3.1**.
+- Riconoscimento separato delle note blu (mano sinistra) e verdi (mano destra).
+- Esportazione MIDI su canali distinti: canale 1 per la mano sinistra, canale 2 per la mano destra.
+- Tracciamento della persistenza delle note per stimare in modo più fedele inizio e fine della durata.

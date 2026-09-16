@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Piano Video -> MIDI 2.3 - avvio macOS
+# Midi Generator v2.3.1 - avvio macOS
 # Può essere eseguito dal Terminale oppure con doppio clic nel Finder.
 
 set -u
@@ -8,7 +8,7 @@ set -u
 cd "$(dirname "$0")" || exit 1
 
 echo "=========================================="
-echo "   Piano Video -> MIDI 2.3 - macOS"
+echo "   Midi Generator v2.3.1 - macOS"
 echo "=========================================="
 echo
 
@@ -75,7 +75,7 @@ if [ $? -ne 0 ]; then
 fi
 
 echo
-echo "Avvio Piano Video -> MIDI 2.3..."
+echo "Avvio Midi Generator v2.3.1..."
 echo
 
 # Avvia la GUI

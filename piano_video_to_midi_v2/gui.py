@@ -416,7 +416,7 @@ class MidiPreview(ctk.CTkFrame):
             x2 = left + event.end / max_time * plot_w
             y1 = top + (max_pitch - event.pitch) * row_h + 1
             y2 = y1 + max(3, row_h - 2)
-            self.canvas.create_rectangle(x1, y1, max(x1 + 2, x2), y2, fill="#4da3ff", outline="")
+            self.canvas.create_rectangle(x1, y1, max(x1 + 2, x2), y2, fill=("#2f80ed" if event.hand == "left" else "#35c759" if event.hand == "right" else "#4da3ff"), outline="")
 
 
 def midi_name(pitch: int) -> str:
@@ -427,7 +427,7 @@ def midi_name(pitch: int) -> str:
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Piano Video → MIDI 2.3")
+        self.title("Midi Generator v2.3.1")
         self.geometry("1120x850")
         self.minsize(980, 760)
         ctk.set_appearance_mode("dark")
@@ -455,7 +455,7 @@ class App(ctk.CTk):
     def build_ui(self):
         header = ctk.CTkFrame(self, corner_radius=0)
         header.pack(fill="x")
-        ctk.CTkLabel(header, text="🎹  Piano Video → MIDI 2.3", font=("Arial", 28, "bold")).pack(side="left", padx=25, pady=18)
+        ctk.CTkLabel(header, text="🎹  Midi Generator v2.3.1", font=("Arial", 28, "bold")).pack(side="left", padx=25, pady=18)
         ctk.CTkLabel(header, text="Falling Notes Converter • Auto Calibration + Pixel rulers", font=("Arial", 13)).pack(side="left", padx=5, pady=18)
 
         tabs = ctk.CTkTabview(self)
