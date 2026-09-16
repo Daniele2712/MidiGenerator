@@ -1,8 +1,8 @@
-# Piano Video → MIDI 2.2
+# Piano Video → MIDI 2.3
 
 Applicazione Python con GUI CustomTkinter per convertire video di pianoforti digitali con note a caduta in file MIDI.
 
-## Novità della versione 2.2
+## Novità della versione 2.3
 
 - **Calibrazione automatica** dei parametri geometrici del video.
 - Rilevamento automatico della linea della tastiera tramite la linea rossa di separazione.
@@ -14,6 +14,12 @@ Applicazione Python con GUI CustomTkinter per convertire video di pianoforti dig
 - Restano disponibili i parametri manuali per eventuali correzioni.
 - Assi X/Y attorno all'anteprima con coordinate in pixel del video originale.
 - Supporto `.mov`, `.mp4`, `.mkv`, `.avi`.
+- Rilevamento della durata delle note tramite tracking temporale frame-by-frame.
+- Tolleranza configurabile per piccoli buchi di rilevamento.
+- Filtro configurabile della durata minima delle note.
+- Progress bar suddivisa tra calibrazione, analisi video e generazione MIDI.
+- Pannello parametri scrollabile per finestre di dimensioni ridotte.
+- Statistiche su durata totale e durata media delle note.
 
 ## Come funziona la calibrazione automatica
 
@@ -73,3 +79,16 @@ Su Windows è disponibile `run_windows.bat`.
 ## Nota tecnica
 
 La calibrazione automatica è pensata per video con una tastiera orizzontale e un piano-roll simile a quello del video di esempio. Se un video ha una grafica completamente diversa, la GUI mantiene comunque la possibilità di inserire manualmente i parametri.
+
+
+## Rilevamento della durata delle note
+
+La durata viene stimata osservando per quanti frame una nota resta presente nella zona di attivazione vicino alla tastiera:
+
+- il primo frame stabile diventa l'inizio della nota;
+- la nota viene considerata ancora attiva finché viene rilevata;
+- il rilascio viene confermato dopo un numero configurabile di frame mancanti;
+- in questo modo piccoli difetti di compressione non spezzano una nota lunga;
+- gli intervalli frammentati dello stesso pitch vengono uniti quando la pausa è molto breve.
+
+I parametri disponibili nella GUI sono `Tolleranza rilascio (frame)` e `Durata minima (s)`. La durata viene salvata nel MIDI attraverso la distanza tra gli eventi `note_on` e `note_off`.

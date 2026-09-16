@@ -36,6 +36,8 @@ class DetectorConfig:
     min_component_height: int = 8
     max_pitch_distance_px: float = 18.0
     release_tolerance_frames: int = 2
+    min_note_duration: float = 0.035
+    max_note_duration: float = 30.0
 
 
 ProgressCallback = Callable[[float, str], None]
@@ -88,25 +90,24 @@ def detect_notes(
     progress_callback: ProgressCallback | None = None,
     stop_callback: Callable[[], bool] | None = None,
 ) -> tuple[list[NoteEvent], float]:
-    """Detect notes from falling-note piano-roll video.
+    """Detect notes and estimate their duration from frame persistence.
 
-    Returns (events, fps). Event timing is relative to the beginning of the
-    video. The first detected note can be shifted to t=0 by the caller.
+    A note-on is recorded when a pitch is continuously detected close to the
+    keyboard line. A note-off is emitted only after ``release_tolerance_frames``
+    consecutive missing frames. This avoids splitting long notes because of
+    small gaps, compression artifacts, or animated highlights.
     """
     config = config or DetectorConfig()
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"Impossibile aprire il video: {video_path}")
 
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if not fps or fps < 1:
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+    if fps < 1:
         fps = 30.0
+    total_frames = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
 
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    if total_frames <= 0:
-        total_frames = 1
-
-    active = {p: False for p in range(config.pitch_min, config.pitch_max + 1)}
+    active: dict[int, bool] = {p: False for p in range(config.pitch_min, config.pitch_max + 1)}
     starts: dict[int, int] = {}
     missing: dict[int, int] = {p: 0 for p in active}
     events: list[NoteEvent] = []
@@ -122,23 +123,20 @@ def detect_notes(
             break
 
         mask = _make_color_mask(frame, config)
-        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
-
+        n, _labels, stats, _centroids = cv2.connectedComponentsWithStats(mask, 8)
         present: set[int] = set()
 
         for i in range(1, n):
             x, y, w, h, area = stats[i]
             if area < config.min_component_area:
                 continue
-            if w < config.min_component_width or w > config.max_component_width:
+            if not (config.min_component_width <= w <= config.max_component_width):
                 continue
             if h < config.min_component_height:
                 continue
-            # Ignore the small progress/status strip immediately below the top UI.
-            if y < 20 and h < 25:
-                continue
 
             bottom = y + config.roll_top_y + h
+            # Only consider bars that have reached the trigger band near the keyboard.
             if bottom < config.keyboard_line_y - config.onset_margin_px:
                 continue
 
@@ -158,40 +156,53 @@ def detect_notes(
                 if missing[pitch] > config.release_tolerance_frames:
                     start_frame = starts.pop(pitch, frame_index)
                     end_frame = frame_index - config.release_tolerance_frames
-                    if end_frame > start_frame:
-                        events.append(
-                            NoteEvent(
-                                pitch=pitch,
-                                start=start_frame / fps,
-                                end=end_frame / fps,
-                            )
-                        )
+                    start = start_frame / fps
+                    end = end_frame / fps
+                    if end > start:
+                        events.append(NoteEvent(pitch=pitch, start=start, end=end))
                     active[pitch] = False
                     missing[pitch] = 0
 
         frame_index += 1
-
         if progress_callback and frame_index % 2 == 0:
-            percent = min(1.0, frame_index / total_frames)
-            progress_callback(percent, f"Analisi frame {frame_index}/{total_frames}")
+            # Detection occupies approximately 35%..95% of the overall workflow.
+            p = 0.35 + 0.60 * min(1.0, frame_index / total_frames)
+            progress_callback(p, f"Analisi frame {frame_index}/{total_frames}")
 
-    # Close notes still held at the end.
     last_time = max(0.0, (frame_index - 1) / fps)
     for pitch, is_active in active.items():
         if is_active:
             start_frame = starts.pop(pitch, frame_index)
             if frame_index - 1 > start_frame:
-                events.append(
-                    NoteEvent(
-                        pitch=pitch,
-                        start=start_frame / fps,
-                        end=last_time,
-                    )
-                )
+                events.append(NoteEvent(pitch=pitch, start=start_frame / fps, end=last_time))
 
     cap.release()
-    events.sort(key=lambda n: (n.start, n.pitch))
+    events = _merge_short_gaps(events, max_gap_frames=config.release_tolerance_frames, fps=fps)
+    events = [e for e in events if config.min_note_duration <= e.duration <= config.max_note_duration]
+    events.sort(key=lambda e: (e.start, e.pitch))
     return events, fps
+
+
+def _merge_short_gaps(events: list[NoteEvent], max_gap_frames: int, fps: float) -> list[NoteEvent]:
+    """Merge fragments of the same pitch separated by a very short gap."""
+    if not events:
+        return []
+    gap_limit = max(0, max_gap_frames) / max(fps, 1.0)
+    grouped: dict[int, list[NoteEvent]] = {}
+    for event in sorted(events, key=lambda e: (e.pitch, e.start)):
+        grouped.setdefault(event.pitch, []).append(event)
+
+    merged: list[NoteEvent] = []
+    for pitch, items in grouped.items():
+        current = items[0]
+        for nxt in items[1:]:
+            if nxt.start - current.end <= gap_limit:
+                current = NoteEvent(pitch, current.start, max(current.end, nxt.end), current.velocity)
+            else:
+                merged.append(current)
+                current = nxt
+        merged.append(current)
+    return merged
 
 
 def normalize_events(events: list[NoteEvent], remove_initial_silence: bool = True) -> list[NoteEvent]:

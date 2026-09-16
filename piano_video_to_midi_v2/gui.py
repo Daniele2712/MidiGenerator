@@ -427,7 +427,7 @@ def midi_name(pitch: int) -> str:
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Piano Video → MIDI 2.2")
+        self.title("Piano Video → MIDI 2.3")
         self.geometry("1120x850")
         self.minsize(980, 760)
         ctk.set_appearance_mode("dark")
@@ -444,6 +444,8 @@ class App(ctk.CTk):
         self.subdivision = tk.StringVar(value="16")
         self.quantize_strength = tk.StringVar(value="0.75")
         self.velocity = tk.StringVar(value="100")
+        self.release_tolerance = tk.StringVar(value="2")
+        self.min_note_duration = tk.StringVar(value="0.035")
         self.stop_requested = False
         self.last_events: list[NoteEvent] = []
 
@@ -453,7 +455,7 @@ class App(ctk.CTk):
     def build_ui(self):
         header = ctk.CTkFrame(self, corner_radius=0)
         header.pack(fill="x")
-        ctk.CTkLabel(header, text="🎹  Piano Video → MIDI 2.2", font=("Arial", 28, "bold")).pack(side="left", padx=25, pady=18)
+        ctk.CTkLabel(header, text="🎹  Piano Video → MIDI 2.3", font=("Arial", 28, "bold")).pack(side="left", padx=25, pady=18)
         ctk.CTkLabel(header, text="Falling Notes Converter • Auto Calibration + Pixel rulers", font=("Arial", 13)).pack(side="left", padx=5, pady=18)
 
         tabs = ctk.CTkTabview(self)
@@ -461,9 +463,8 @@ class App(ctk.CTk):
         video_tab = tabs.add("Video & Conversione")
         midi_tab = tabs.add("Anteprima MIDI")
 
-        settings = ctk.CTkFrame(video_tab, width=350)
+        settings = ctk.CTkScrollableFrame(video_tab, width=350, label_text="Impostazioni")
         settings.pack(side="left", fill="y", padx=(10, 8), pady=10)
-        settings.pack_propagate(False)
         preview_frame = ctk.CTkFrame(video_tab)
         preview_frame.pack(side="left", fill="both", expand=True, padx=(8, 10), pady=10)
 
@@ -493,6 +494,8 @@ class App(ctk.CTk):
         self.calibration_status.pack(anchor="w", padx=15, pady=(0, 7))
 
         self.add_entry(settings, "Velocity", self.velocity)
+        self.add_entry(settings, "Tolleranza rilascio (frame)", self.release_tolerance)
+        self.add_entry(settings, "Durata minima (s)", self.min_note_duration)
 
         ctk.CTkLabel(
             settings,
@@ -622,7 +625,9 @@ class App(ctk.CTk):
             velocity = int(self.velocity.get())
             subdivision = int(self.subdivision.get())
             strength = float(self.quantize_strength.get())
-            if bpm <= 0 or line_y < 0 or c4_x < 0 or octave_width <= 0 or not (1 <= velocity <= 127) or subdivision <= 0 or not (0 <= strength <= 1):
+            release_tolerance = int(self.release_tolerance.get())
+            min_note_duration = float(self.min_note_duration.get())
+            if bpm <= 0 or line_y < 0 or c4_x < 0 or octave_width <= 0 or not (1 <= velocity <= 127) or subdivision <= 0 or not (0 <= strength <= 1) or release_tolerance < 0 or min_note_duration <= 0:
                 raise ValueError
         except ValueError:
             messagebox.showerror("Parametri non validi", "Controlla BPM, coordinate, velocity e parametri di quantizzazione.")
@@ -650,12 +655,14 @@ class App(ctk.CTk):
 
         thread = threading.Thread(
             target=self.worker,
-            args=(config, bpm, velocity, subdivision, strength),
+            args=(config, bpm, velocity, subdivision, strength, release_tolerance, min_note_duration),
             daemon=True,
         )
         thread.start()
 
-    def worker(self, config, bpm, velocity, subdivision, strength):
+    def worker(self, config, bpm, velocity, subdivision, strength, release_tolerance, min_note_duration):
+        config.release_tolerance_frames = release_tolerance
+        config.min_note_duration = min_note_duration
         try:
             events = convert_video_to_midi(
                 self.video_path.get(),
@@ -685,7 +692,8 @@ class App(ctk.CTk):
         self.progress.set(1)
         duration = max((e.end for e in events), default=0.0)
         self.status.configure(text="✅ Conversione completata")
-        self.stats.configure(text=f"Note: {len(events)}\nDurata MIDI: {duration:.2f} s")
+        avg_duration = (sum(e.duration for e in events) / len(events)) if events else 0.0
+        self.stats.configure(text=f"Note: {len(events)}\nDurata MIDI: {duration:.2f} s\nDurata media note: {avg_duration:.3f} s")
         self.convert_btn.configure(state="normal")
         self.cancel_btn.configure(state="disabled")
         self.midi_preview.set_events(events)
