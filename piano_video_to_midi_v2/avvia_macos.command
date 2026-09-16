@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Midi Generator v2.3.2 - avvio macOS
+# Midi Generator v2.4 - avvio macOS
 # Può essere eseguito dal Terminale oppure con doppio clic nel Finder.
 
 set -u
@@ -8,7 +8,7 @@ set -u
 cd "$(dirname "$0")" || exit 1
 
 echo "=========================================="
-echo "   Midi Generator v2.3.2 - macOS"
+echo "   Midi Generator v2.4 - macOS"
 echo "=========================================="
 echo
 
@@ -75,7 +75,7 @@ if [ $? -ne 0 ]; then
 fi
 
 echo
-echo "Avvio Midi Generator v2.3.2..."
+echo "Avvio Midi Generator v2.4..."
 echo
 
 # Avvia la GUI

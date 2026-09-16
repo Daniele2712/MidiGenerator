@@ -414,6 +414,12 @@ def convert_video_to_midi(
         events = quantize_events(events, bpm, subdivision, quantize_strength)
 
     write_midi(events, output_path, bpm=bpm, velocity=velocity)
+    try:
+        from visual_compare import create_comparison_report
+        report_path = Path(output_path).with_name(Path(output_path).stem + "_comparison.png")
+        create_comparison_report(video_path, events, report_path)
+    except Exception:
+        pass
 
     if progress_callback:
         progress_callback(1.0, f"Completato: {len(events)} note rilevate")

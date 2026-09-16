@@ -1,8 +1,8 @@
-# Midi Generator v2.3.2
+# Midi Generator v2.4
 
 Applicazione Python con GUI CustomTkinter per convertire video di pianoforti digitali con note a caduta in file MIDI.
 
-## Novità della versione 2.3.2
+## Novità della versione 2.4
 
 - **Calibrazione automatica** dei parametri geometrici del video.
 - Rilevamento automatico della linea della tastiera tramite la linea rossa di separazione.
@@ -94,14 +94,14 @@ La durata viene stimata osservando per quanti frame una nota resta presente nell
 I parametri disponibili nella GUI sono `Tolleranza rilascio (frame)` e `Durata minima (s)`. La durata viene salvata nel MIDI attraverso la distanza tra gli eventi `note_on` e `note_off`.
 
 
-### v2.3.2
-- Nome applicazione: **Midi Generator v2.3.2**.
+### v2.4
+- Nome applicazione: **Midi Generator v2.4**.
 - Riconoscimento separato delle note blu (mano sinistra) e verdi (mano destra).
 - Esportazione MIDI su canali distinti: canale 1 per la mano sinistra, canale 2 per la mano destra.
 - Tracciamento della persistenza delle note per stimare in modo più fedele inizio e fine della durata.
 
 
-### Correzione 2.3.2: note ripetute
+### Correzione 2.4: note ripetute
 
 La fusione automatica di eventi vicini è stata disattivata: note consecutive
 della stessa altezza non vengono più accorpate in una singola nota lunga.
@@ -109,7 +109,7 @@ La durata viene determinata dal tracciamento per fotogrammi e dalla tolleranza
 di rilascio.
 
 
-## Colori generici (v2.3.2)
+## Colori generici (v2.4)
 
 Il rilevatore non è più vincolato a blu e verde: campiona vari fotogrammi, individua due tonalità HSV dominanti e assegna automaticamente la tonalità con posizione media più a sinistra alla mano sinistra e l'altra alla mano destra.
 

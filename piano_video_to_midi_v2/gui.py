@@ -448,7 +448,7 @@ def midi_name(pitch: int) -> str:
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Midi Generator v2.3.2")
+        self.title("Midi Generator v2.4")
         self.geometry("1120x850")
         self.minsize(980, 760)
         ctk.set_appearance_mode("dark")
@@ -480,7 +480,7 @@ class App(ctk.CTk):
     def build_ui(self):
         header = ctk.CTkFrame(self, corner_radius=0)
         header.pack(fill="x")
-        ctk.CTkLabel(header, text="🎹  Midi Generator v2.3.2", font=("Arial", 28, "bold")).pack(side="left", padx=25, pady=18)
+        ctk.CTkLabel(header, text="🎹  Midi Generator v2.4", font=("Arial", 28, "bold")).pack(side="left", padx=25, pady=18)
         ctk.CTkLabel(header, text="Falling Notes Converter • Auto Calibration + Pixel rulers", font=("Arial", 13)).pack(side="left", padx=5, pady=18)
 
         tabs = ctk.CTkTabview(self)
