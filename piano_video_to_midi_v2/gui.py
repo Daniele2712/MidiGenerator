@@ -427,7 +427,7 @@ def midi_name(pitch: int) -> str:
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Midi Generator v2.3.1")
+        self.title("Midi Generator v2.3.2")
         self.geometry("1120x850")
         self.minsize(980, 760)
         ctk.set_appearance_mode("dark")
@@ -446,6 +446,10 @@ class App(ctk.CTk):
         self.velocity = tk.StringVar(value="100")
         self.release_tolerance = tk.StringVar(value="2")
         self.min_note_duration = tk.StringVar(value="0.035")
+        self.auto_detect_colors = tk.BooleanVar(value=True)
+        self.left_hue = tk.StringVar(value="")
+        self.right_hue = tk.StringVar(value="")
+        self.hue_tolerance = tk.StringVar(value="14")
         self.stop_requested = False
         self.last_events: list[NoteEvent] = []
 
@@ -455,7 +459,7 @@ class App(ctk.CTk):
     def build_ui(self):
         header = ctk.CTkFrame(self, corner_radius=0)
         header.pack(fill="x")
-        ctk.CTkLabel(header, text="🎹  Midi Generator v2.3.1", font=("Arial", 28, "bold")).pack(side="left", padx=25, pady=18)
+        ctk.CTkLabel(header, text="🎹  Midi Generator v2.3.2", font=("Arial", 28, "bold")).pack(side="left", padx=25, pady=18)
         ctk.CTkLabel(header, text="Falling Notes Converter • Auto Calibration + Pixel rulers", font=("Arial", 13)).pack(side="left", padx=5, pady=18)
 
         tabs = ctk.CTkTabview(self)
@@ -496,6 +500,13 @@ class App(ctk.CTk):
         self.add_entry(settings, "Velocity", self.velocity)
         self.add_entry(settings, "Tolleranza rilascio (frame)", self.release_tolerance)
         self.add_entry(settings, "Durata minima (s)", self.min_note_duration)
+
+        self.add_section(settings, "COLORI MANI")
+        ctk.CTkCheckBox(settings, text="Rileva automaticamente i colori", variable=self.auto_detect_colors).pack(anchor="w", padx=15, pady=6)
+        self.add_entry(settings, "Hue mano sinistra (opz.)", self.left_hue)
+        self.add_entry(settings, "Hue mano destra (opz.)", self.right_hue)
+        self.add_entry(settings, "Tolleranza hue", self.hue_tolerance)
+        ctk.CTkLabel(settings, text="Se i campi Hue sono vuoti, il programma individua i due colori dominanti e li assegna in base alla posizione orizzontale.", wraplength=310, justify="left", font=("Arial", 10)).pack(anchor="w", padx=15, pady=(2, 8))
 
         ctk.CTkLabel(
             settings,
@@ -625,9 +636,12 @@ class App(ctk.CTk):
             velocity = int(self.velocity.get())
             subdivision = int(self.subdivision.get())
             strength = float(self.quantize_strength.get())
+            left_hue = float(self.left_hue.get()) if self.left_hue.get().strip() else None
+            right_hue = float(self.right_hue.get()) if self.right_hue.get().strip() else None
+            hue_tolerance = float(self.hue_tolerance.get())
             release_tolerance = int(self.release_tolerance.get())
             min_note_duration = float(self.min_note_duration.get())
-            if bpm <= 0 or line_y < 0 or c4_x < 0 or octave_width <= 0 or not (1 <= velocity <= 127) or subdivision <= 0 or not (0 <= strength <= 1) or release_tolerance < 0 or min_note_duration <= 0:
+            if bpm <= 0 or line_y < 0 or c4_x < 0 or octave_width <= 0 or not (1 <= velocity <= 127) or subdivision <= 0 or not (0 <= strength <= 1) or release_tolerance < 0 or min_note_duration <= 0 or not (0 <= hue_tolerance <= 90) or (left_hue is not None and not (0 <= left_hue < 180)) or (right_hue is not None and not (0 <= right_hue < 180)):
                 raise ValueError
         except ValueError:
             messagebox.showerror("Parametri non validi", "Controlla BPM, coordinate, velocity e parametri di quantizzazione.")
@@ -645,6 +659,10 @@ class App(ctk.CTk):
             keyboard_line_y=line_y,
             c4_center_x=c4_x,
             octave_width_px=octave_width,
+            auto_detect_colors=self.auto_detect_colors.get(),
+            left_hue=left_hue,
+            right_hue=right_hue,
+            hue_tolerance=hue_tolerance,
         )
 
         self.stop_requested = False

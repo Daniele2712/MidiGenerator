@@ -15,7 +15,7 @@ class NoteEvent:
     start: float
     end: float
     velocity: int = 100
-    hand: str = "unknown"  # "left" (blue), "right" (green), or "unknown"
+    hand: str = "unknown"  # Mano assegnata dal profilo colore rilevato.
 
     @property
     def duration(self) -> float:
@@ -39,6 +39,11 @@ class DetectorConfig:
     release_tolerance_frames: int = 2
     min_note_duration: float = 0.035
     max_note_duration: float = 30.0
+    auto_detect_colors: bool = True  # Se True, rileva automaticamente i due colori delle note.
+    left_hue: float | None = None  # Hue manuale per la mano sinistra, se impostata.
+    right_hue: float | None = None  # Hue manuale per la mano destra, se impostata.
+    hue_tolerance: float = 14.0  # Tolleranza circolare del colore in gradi OpenCV.
+    min_color_saturation: int = 65  # Saturazione minima per considerare un pixel colorato.
 
 
 ProgressCallback = Callable[[float, str], None]
@@ -61,32 +66,90 @@ def x_to_midi(x: float, config: DetectorConfig) -> Optional[int]:
     return pitch
 
 
-def _make_color_masks(frame: np.ndarray, config: DetectorConfig) -> dict[str, np.ndarray]:
-    """Return independent masks for the blue (left) and green (right) notes."""
-    roi = frame[config.roll_top_y:config.keyboard_line_y]
-    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+def _circular_hue_distance(hue: np.ndarray, center: float) -> np.ndarray:
+    """Calcola la distanza circolare tra hue e un centro colore."""
+    distance = np.abs(hue.astype(np.float32) - float(center))  # Calcola la distanza assoluta.
+    return np.minimum(distance, 180.0 - distance)  # Gestisce il passaggio circolare 179->0.
 
-    # OpenCV hue range is 0..179. These ranges are intentionally tolerant of
-    # compression and screen-recording colour shifts.
-    blue = (
-        (hsv[:, :, 0] >= 95)
-        & (hsv[:, :, 0] <= 135)
-        & (hsv[:, :, 1] >= 70)
-        & (hsv[:, :, 2] >= 60)
-    )
-    green = (
-        (hsv[:, :, 0] >= 30)
-        & (hsv[:, :, 0] <= 75)
-        & (hsv[:, :, 1] >= 65)
-        & (hsv[:, :, 2] >= 60)
-    )
 
-    kernel = np.ones((3, 3), np.uint8)
-    masks = {}
-    for hand, raw in (("left", blue), ("right", green)):
-        mask = raw.astype(np.uint8) * 255
-        masks[hand] = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
-    return masks
+def _hue_mask(hsv: np.ndarray, center: float, tolerance: float, min_saturation: int) -> np.ndarray:
+    """Crea una maschera per un colore HSV con tolleranza circolare."""
+    hue_distance = _circular_hue_distance(hsv[:, :, 0], center)  # Misura la distanza dal colore richiesto.
+    saturation_ok = hsv[:, :, 1] >= min_saturation  # Elimina le aree poco colorate.
+    value_ok = hsv[:, :, 2] >= 45  # Elimina le aree troppo scure.
+    return (hue_distance <= tolerance) & saturation_ok & value_ok  # Restituisce i pixel compatibili.
+
+
+def _find_two_color_centers(frame_samples: list[np.ndarray], config: DetectorConfig) -> tuple[float, float]:
+    """Trova due colori dominanti nell'area delle note usando un istogramma HSV."""
+    histogram = np.zeros(180, dtype=np.float64)  # Crea l'istogramma dei 180 valori hue possibili.
+    for frame in frame_samples:  # Analizza ogni fotogramma campionato.
+        roi = frame[config.roll_top_y:config.keyboard_line_y]  # Isola l'area sopra la tastiera.
+        roi = roi[min(80, max(0, roi.shape[0] - 1)):]  # Esclude la barra di avanzamento superiore quando presente.
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)  # Converte il fotogramma da BGR a HSV.
+        valid = (hsv[:, :, 1] >= config.min_color_saturation) & (hsv[:, :, 2] >= 45)  # Seleziona pixel colorati.
+        histogram += np.bincount(hsv[:, :, 0][valid].ravel(), minlength=180)  # Conta le tonalità presenti.
+    if histogram.sum() == 0:  # Controlla se non sono stati trovati pixel colorati.
+        return 110.0, 50.0  # Usa un fallback blu/verde compatibile con la versione precedente.
+    smooth = np.convolve(np.r_[histogram[-4:], histogram, histogram[:4]], np.ones(9), mode="same")[4:-4]  # Smussa l'istogramma.
+    first = int(np.argmax(smooth))  # Seleziona il primo picco dominante.
+    circular_distance = np.minimum(np.abs(np.arange(180) - first), 180 - np.abs(np.arange(180) - first))  # Calcola le distanze circolari.
+    second_scores = smooth.copy()  # Copia i punteggi del secondo picco.
+    second_scores[circular_distance < 18] = 0  # Evita di scegliere due picchi dello stesso colore.
+    second = int(np.argmax(second_scores))  # Seleziona il secondo picco.
+    return float(first), float(second)  # Restituisce i due centri hue rilevati.
+
+
+def _assign_hues_to_hands(frame_samples: list[np.ndarray], centers: tuple[float, float], config: DetectorConfig) -> tuple[float, float]:
+    """Assegna il colore con posizione media più bassa alla mano sinistra."""
+    x_values: list[list[float]] = [[], []]  # Prepara le coordinate X per i due colori.
+    for frame in frame_samples:  # Analizza i fotogrammi campionati.
+        roi = frame[config.roll_top_y:config.keyboard_line_y]  # Isola l'area delle note.
+        roi = roi[min(80, max(0, roi.shape[0] - 1)):]  # Esclude la barra di avanzamento superiore quando presente.
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)  # Converte il frame in HSV.
+        for index, center in enumerate(centers):  # Analizza ciascun centro colore.
+            mask = _hue_mask(hsv, center, config.hue_tolerance, config.min_color_saturation)  # Crea la maschera del colore.
+            ys, xs = np.where(mask)  # Estrae le coordinate dei pixel colorati.
+            if len(xs):  # Verifica che il colore sia presente.
+                x_values[index].extend(xs.astype(float).tolist())  # Memorizza le coordinate X.
+    medians = [float(np.median(values)) if values else float("inf") for values in x_values]  # Calcola la posizione media di ogni colore.
+    if medians[0] <= medians[1]:  # Verifica quale colore è più a sinistra.
+        return centers[0], centers[1]  # Primo colore a sinistra, secondo a destra.
+    return centers[1], centers[0]  # Inverte i colori se il secondo è più a sinistra.
+
+
+def _sample_frames(video_path: str | Path, config: DetectorConfig, limit: int = 24) -> list[np.ndarray]:
+    """Campiona alcuni fotogrammi per stimare automaticamente i colori."""
+    cap = cv2.VideoCapture(str(video_path))  # Apre il video per la fase di calibrazione colore.
+    samples: list[np.ndarray] = []  # Crea l'elenco dei fotogrammi campionati.
+    if not cap.isOpened():  # Verifica l'apertura del video.
+        return samples  # Restituisce una lista vuota se il video non è leggibile.
+    total = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))  # Recupera il numero totale di fotogrammi.
+    indices = np.linspace(0, total - 1, min(limit, total), dtype=int)  # Distribuisce i campioni lungo il video.
+    for index in np.unique(indices):  # Visita ogni indice senza duplicati.
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(index))  # Sposta la lettura al fotogramma richiesto.
+        ok, frame = cap.read()  # Legge il fotogramma.
+        if ok:  # Controlla la lettura.
+            samples.append(frame)  # Salva il fotogramma valido.
+    cap.release()  # Chiude il video di calibrazione.
+    return samples  # Restituisce i campioni disponibili.
+
+
+def _make_color_masks(frame: np.ndarray, config: DetectorConfig, color_centers: tuple[float, float] | None = None) -> dict[str, np.ndarray]:
+    """Crea due maschere colore e le associa genericamente a sinistra/destra."""
+    roi = frame[config.roll_top_y:config.keyboard_line_y]  # Isola l'area del piano roll.
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)  # Converte l'area in HSV.
+    if color_centers is None:  # Controlla se non sono stati forniti centri colore.
+        color_centers = (110.0, 50.0)  # Usa un fallback generico per compatibilità.
+    left_hue, right_hue = color_centers  # Estrae i due colori assegnati alle mani.
+    left = _hue_mask(hsv, left_hue, config.hue_tolerance, config.min_color_saturation)  # Maschera della mano sinistra.
+    right = _hue_mask(hsv, right_hue, config.hue_tolerance, config.min_color_saturation)  # Maschera della mano destra.
+    kernel = np.ones((3, 3), np.uint8)  # Crea un piccolo elemento morfologico.
+    masks: dict[str, np.ndarray] = {}  # Prepara il dizionario delle maschere.
+    for hand, raw in (("left", left), ("right", right)):  # Applica lo stesso trattamento alle due mani.
+        mask = raw.astype(np.uint8) * 255  # Converte la maschera booleana in immagine binaria.
+        masks[hand] = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)  # Chiude piccoli buchi e interruzioni.
+    return masks  # Restituisce le maschere finali.
 
 
 # Backward-compatible helper for callers that only need a combined mask.
@@ -116,8 +179,16 @@ def detect_notes(
         fps = 30.0
     total_frames = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
 
-    hands = ("left", "right")
-    keys = [(p, h) for p in range(config.pitch_min, config.pitch_max + 1) for h in hands]
+    frame_samples = _sample_frames(video_path, config) if config.auto_detect_colors else []  # Campiona frame per i colori.
+    if config.left_hue is not None and config.right_hue is not None:  # Controlla se i colori sono impostati manualmente.
+        color_centers = (float(config.left_hue), float(config.right_hue))  # Usa i colori manuali.
+    elif frame_samples:  # Controlla se esistono campioni validi.
+        detected_centers = _find_two_color_centers(frame_samples, config)  # Rileva i due colori dominanti.
+        color_centers = _assign_hues_to_hands(frame_samples, detected_centers, config)  # Associa i colori alle mani tramite posizione.
+    else:  # Gestisce l'assenza di campioni.
+        color_centers = (110.0, 50.0)  # Usa il fallback precedente.
+    hands = ("left", "right")  # Mantiene due mani indipendenti.
+    keys = [(p, h) for p in range(config.pitch_min, config.pitch_max + 1) for h in hands]  # Crea tutte le coppie pitch/mano.
     active = {key: False for key in keys}
     starts: dict[tuple[int, str], int] = {}
     missing = {key: 0 for key in keys}
@@ -133,7 +204,7 @@ def detect_notes(
         if not ok:
             break
 
-        masks = _make_color_masks(frame, config)
+        masks = _make_color_masks(frame, config, color_centers)
         present: set[tuple[int, str]] = set()
 
         for hand, mask in masks.items():
@@ -204,7 +275,11 @@ def detect_notes(
                 events.append(NoteEvent(pitch=pitch, start=start_frame / fps, end=last_time, hand=hand))
 
     cap.release()
-    events = _merge_short_gaps(events, max_gap_frames=config.release_tolerance_frames, fps=fps)
+    # Do not merge neighbouring events automatically. In Synthesia-style
+    # videos, repeated notes of the same pitch can be separated by a very
+    # short visual gap; merging them would incorrectly turn several notes
+    # into one long note. Fragment prevention is handled by the continuation
+    # band and release tolerance during tracking instead.
     events = [e for e in events if config.min_note_duration <= e.duration <= config.max_note_duration]
     events.sort(key=lambda e: (e.start, e.pitch, e.hand))
     return events, fps
@@ -291,7 +366,7 @@ def write_midi(
     track = MidiTrack()
     midi.tracks.append(track)
 
-    track.append(MetaMessage("track_name", name="Midi Generator v2.3.1", time=0))
+    track.append(MetaMessage("track_name", name="Midi Generator v2.3.2", time=0))
     track.append(MetaMessage("set_tempo", tempo=bpm2tempo(bpm), time=0))
     track.append(MetaMessage("time_signature", numerator=4, denominator=4, clocks_per_click=24, notated_32nd_notes_per_beat=8, time=0))
     track.append(Message("program_change", program=0, channel=0, time=0))
