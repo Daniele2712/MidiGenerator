@@ -362,61 +362,82 @@ def format_time(seconds: float) -> str:
 
 
 class MidiPreview(ctk.CTkFrame):
+    """Anteprima MIDI con pitch sull'asse X e tempo sull'asse Y."""
+
     def __init__(self, master):
         super().__init__(master)
-        self.events: list[NoteEvent] = []
-        self.canvas = tk.Canvas(self, bg="#171717", highlightthickness=0)
-        self.canvas.pack(fill="both", expand=True, padx=8, pady=8)
-        self.info = ctk.CTkLabel(self, text="Converti un video per vedere l'anteprima MIDI")
-        self.info.pack(pady=(0, 8))
-        self.bind("<Configure>", lambda e: self.draw())
+        self.events: list[NoteEvent] = []  # Memorizza gli eventi MIDI da visualizzare.
+        self.pixels_per_second = 90.0  # Aumenta la scala verticale per rendere le note leggibili.
+        self.pitch_width = 24.0  # Imposta la larghezza grafica di ogni semitono.
+        self.left_margin = 55  # Riserva spazio alle etichette delle ottave.
+        self.top_margin = 25  # Riserva spazio al titolo dell'asse X.
+        self.bottom_margin = 25  # Riserva spazio inferiore al grafico.
+
+        frame = ctk.CTkFrame(self)  # Crea il contenitore dei canvas e delle barre di scorrimento.
+        frame.pack(fill="both", expand=True, padx=8, pady=8)  # Espande il contenitore nella scheda.
+        frame.grid_rowconfigure(0, weight=1)  # Permette al canvas di espandersi verticalmente.
+        frame.grid_columnconfigure(0, weight=1)  # Permette al canvas di espandersi orizzontalmente.
+
+        self.canvas = tk.Canvas(frame, bg="#171717", highlightthickness=0)  # Crea l'area di disegno.
+        self.v_scroll = ctk.CTkScrollbar(frame, orientation="vertical", command=self.canvas.yview)  # Crea lo scroll verticale del tempo.
+        self.h_scroll = ctk.CTkScrollbar(frame, orientation="horizontal", command=self.canvas.xview)  # Crea lo scroll orizzontale delle note.
+        self.canvas.configure(yscrollcommand=self.v_scroll.set, xscrollcommand=self.h_scroll.set)  # Collega gli scroll al canvas.
+        self.canvas.grid(row=0, column=0, sticky="nsew")  # Posiziona il canvas nella griglia.
+        self.v_scroll.grid(row=0, column=1, sticky="ns")  # Posiziona la barra verticale a destra.
+        self.h_scroll.grid(row=1, column=0, sticky="ew")  # Posiziona la barra orizzontale in basso.
+
+        self.info = ctk.CTkLabel(self, text="Converti un video per vedere l'anteprima MIDI")  # Crea l'etichetta informativa.
+        self.info.pack(pady=(0, 8))  # Posiziona l'etichetta sotto il grafico.
+        self.bind("<Configure>", lambda _event: self.draw())  # Ridisegna il grafico quando cambia la dimensione.
 
     def set_events(self, events: list[NoteEvent]):
-        self.events = events
-        self.info.configure(text=f"Note rilevate: {len(events)}")
-        self.draw()
+        self.events = events  # Aggiorna gli eventi visualizzati.
+        self.info.configure(text=f"Note rilevate: {len(events)} • X=pitch • Y=tempo")  # Mostra un riepilogo degli assi.
+        self.draw()  # Ridisegna immediatamente il grafico.
 
     def draw(self):
-        self.canvas.delete("all")
-        if not self.events:
-            self.canvas.create_text(350, 180, text="Nessuna nota", fill="white", font=("Arial", 16))
-            return
+        self.canvas.delete("all")  # Cancella il disegno precedente.
+        if not self.events:  # Controlla se non ci sono eventi da visualizzare.
+            self.canvas.create_text(350, 180, text="Nessuna nota", fill="white", font=("Arial", 16))  # Mostra un messaggio vuoto.
+            self.canvas.configure(scrollregion=(0, 0, 700, 400))  # Imposta una regione minima scorrevole.
+            return  # Interrompe il disegno quando non ci sono note.
 
-        width = max(400, self.canvas.winfo_width())
-        height = max(250, self.canvas.winfo_height())
-        min_pitch = min(e.pitch for e in self.events)
-        max_pitch = max(e.pitch for e in self.events)
-        max_time = max(e.end for e in self.events) or 1.0
+        min_pitch = min(e.pitch for e in self.events)  # Trova il pitch più basso.
+        max_pitch = max(e.pitch for e in self.events)  # Trova il pitch più alto.
+        max_time = max(e.end for e in self.events) or 1.0  # Trova la durata totale del brano.
+        pitch_span = max(1, max_pitch - min_pitch + 1)  # Calcola il numero di semitoni rappresentati.
+        plot_w = max(700, self.left_margin + pitch_span * self.pitch_width + 30)  # Calcola la larghezza totale del grafico.
+        plot_h = max(500, self.top_margin + max_time * self.pixels_per_second + self.bottom_margin)  # Calcola l'altezza in base al tempo.
+        x0 = self.left_margin  # Definisce l'inizio dell'area delle note sull'asse X.
+        y0 = self.top_margin  # Definisce l'inizio dell'area delle note sull'asse Y.
 
-        left = 55
-        top = 15
-        right = 15
-        bottom = 30
-        plot_w = width - left - right
-        plot_h = height - top - bottom
-        pitch_span = max(1, max_pitch - min_pitch + 1)
-        row_h = max(5, plot_h / pitch_span)
+        self.canvas.create_text(x0, 8, anchor="w", text="Pitch / note", fill="#dddddd", font=("Arial", 10, "bold"))  # Scrive il titolo dell'asse X.
+        self.canvas.create_text(8, y0, anchor="w", text="Tempo", fill="#dddddd", font=("Arial", 10, "bold"))  # Scrive il titolo dell'asse Y.
 
-        for pitch in range(min_pitch, max_pitch + 1):
-            y = top + (max_pitch - pitch) * row_h
-            if pitch % 12 in (0, 5):
-                self.canvas.create_line(left, y, width - right, y, fill="#333333")
-            if pitch % 12 == 0:
-                self.canvas.create_text(5, y + row_h / 2, anchor="w", text=midi_name(pitch), fill="#aaaaaa", font=("Arial", 8))
+        for pitch in range(min_pitch, max_pitch + 1):  # Disegna una colonna per ogni semitono.
+            x = x0 + (pitch - min_pitch) * self.pitch_width  # Calcola la posizione orizzontale del pitch.
+            if pitch % 12 in (0, 5):  # Evidenzia alcune note per facilitare la lettura.
+                self.canvas.create_line(x, y0, x, plot_h - self.bottom_margin, fill="#333333")  # Disegna la griglia verticale.
+            if pitch % 12 == 0:  # Etichetta soltanto le note C per evitare sovraccarico visivo.
+                self.canvas.create_text(x + 2, y0 - 12, anchor="w", text=midi_name(pitch), fill="#aaaaaa", font=("Arial", 8))  # Scrive il nome dell'ottava.
 
-        sec = 0
-        while sec <= max_time:
-            x = left + (sec / max_time) * plot_w
-            self.canvas.create_line(x, top, x, height - bottom, fill="#292929")
-            self.canvas.create_text(x + 2, height - 15, anchor="w", text=f"{sec}s", fill="#aaaaaa", font=("Arial", 8))
-            sec += max(1, int(max_time / 10))
+        sec = 0.0  # Inizializza il tempo della griglia.
+        step = 1.0 if max_time <= 60 else 5.0  # Sceglie un intervallo leggibile per la griglia temporale.
+        while sec <= max_time:  # Disegna le righe temporali lungo tutto il brano.
+            y = y0 + sec * self.pixels_per_second  # Converte i secondi in coordinate verticali.
+            self.canvas.create_line(x0, y, plot_w - 15, y, fill="#292929")  # Disegna una linea orizzontale del tempo.
+            self.canvas.create_text(5, y, anchor="w", text=f"{sec:g}s", fill="#aaaaaa", font=("Arial", 8))  # Scrive il tempo sulla sinistra.
+            sec += step  # Passa al successivo riferimento temporale.
 
-        for event in self.events:
-            x1 = left + event.start / max_time * plot_w
-            x2 = left + event.end / max_time * plot_w
-            y1 = top + (max_pitch - event.pitch) * row_h + 1
-            y2 = y1 + max(3, row_h - 2)
-            self.canvas.create_rectangle(x1, y1, max(x1 + 2, x2), y2, fill=("#2f80ed" if event.hand == "left" else "#35c759" if event.hand == "right" else "#4da3ff"), outline="")
+        for event in self.events:  # Disegna ogni evento MIDI individualmente.
+            x1 = x0 + (event.pitch - min_pitch) * self.pitch_width + 1  # Calcola il bordo sinistro della nota.
+            x2 = x1 + self.pitch_width - 2  # Calcola il bordo destro della nota.
+            y1 = y0 + event.start * self.pixels_per_second  # Calcola l'inizio verticale della nota.
+            y2 = y0 + event.end * self.pixels_per_second  # Calcola la fine verticale della nota.
+            fill = "#2f80ed" if event.hand == "left" else "#35c759" if event.hand == "right" else "#4da3ff"  # Sceglie il colore in base alla mano.
+            self.canvas.create_rectangle(x1, y1, x2, max(y1 + 3, y2), fill=fill, outline="")  # Disegna la nota mantenendo la durata.
+
+        self.canvas.configure(scrollregion=(0, 0, plot_w, plot_h))  # Rende scorribile l'intero piano temporale.
 
 
 def midi_name(pitch: int) -> str:
@@ -444,7 +465,7 @@ class App(ctk.CTk):
         self.subdivision = tk.StringVar(value="16")
         self.quantize_strength = tk.StringVar(value="0.75")
         self.velocity = tk.StringVar(value="100")
-        self.release_tolerance = tk.StringVar(value="0")
+        self.release_tolerance = tk.StringVar(value="3")
         self.min_note_duration = tk.StringVar(value="0.035")
         self.auto_detect_colors = tk.BooleanVar(value=True)
         self.left_hue = tk.StringVar(value="")

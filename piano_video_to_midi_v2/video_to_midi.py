@@ -36,7 +36,7 @@ class DetectorConfig:
     max_component_width: int = 90
     min_component_height: int = 8
     max_pitch_distance_px: float = 18.0
-    release_tolerance_frames: int = 2
+    release_tolerance_frames: int = 3
     min_note_duration: float = 0.035
     max_note_duration: float = 30.0
     auto_detect_colors: bool = True  # Se True, rileva automaticamente i due colori delle note.
